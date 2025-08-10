@@ -68,10 +68,18 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
+    // 🔧 ARREGLO IMPRESCINDIBLE: Leaflet no encuentra los íconos por defecto
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+      iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    });
+
     // 1. Inicializar el mapa
     const map = L.map('map').setView([-32.0, -60.0], 7);
 
-    // 2. Fondo CartoDB Light
+    // 2. Fondo: CartoDB Light
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: 'abcd',
@@ -122,57 +130,19 @@
       })
     };
 
-    // Mapeo de colores a categorías
-    const colorToCategory = {
-      "red": "Personas desaparecidas",
-      "green": "Organismos de DDHH",
-      "blue": "Espacios de memoria",
-      "gold": "Madres / CDD"
+    // Mapeo de categoría a ícono
+    const categoriaAIcono = {
+      "Personas desaparecidas": iconos.red,
+      "Organismos de DDHH": iconos.green,
+      "Espacios de memoria": iconos.blue,
+      "Madres / CDD": iconos.gold
     };
 
-    // 🔧 Función para mapear cualquier variante de color a clave válida
-    function getColorKey(color) {
-      if (!color) return 'gray';
-      const c = color.toLowerCase().trim();
-
-      // 🔴 Rojos: todos los posibles rojos
-      if (c === 'red' || 
-          c === 'crimson' || 
-          c === '#dc3545' || 
-          c.includes('red') || 
-          c === '#ff0000' || 
-          c === 'darkred' || 
-          c === 'tomato') {
-        return 'red';
-      }
-
-      // 🟢 Verdes
-      if (c === 'green' || c.includes('green') || c === '#28a745') {
-        return 'green';
-      }
-
-      // 🔵 Azules
-      if (c === 'blue' || c.includes('blue') || c === 'midnightblue') {
-        return 'blue';
-      }
-
-      // 🟡 Dorados / Amarillos
-      if (c === 'gold' || c.includes('gold') || 
-          c === 'yellow' || c.includes('yellow') || 
-          c === '#ffc107') {
-        return 'gold';
-      }
-
-      // Por defecto
-      console.warn('Color no reconocido:', color, '→ usando gris');
-      return 'gray';
-    }
-
-    // Coordenadas para ajustar la vista
+    // Para ajustar la vista
     const bounds = [];
 
     // 5. Cargar GeoJSON
-    fetch('mapa_desaparecides_entrerrianes4.geojson')
+    fetch('datos-mapa.geojson')
       .then(response => {
         if (!response.ok) throw new Error('No se pudo cargar el archivo GeoJSON');
         return response.json();
@@ -183,33 +153,28 @@
           if (!coords || coords.length < 2) return;
 
           const [lng, lat] = coords;
-          if (!lat || !lng) return;
-
           bounds.push([lat, lng]);
 
-          // Obtener color y mapear
-          const rawColor = feature.properties?._umap_options?.color || 'gray';
-          const color = getColorKey(rawColor);
-          const category = colorToCategory[color] || "Personas desaparecidas";
-          const icon = iconos[color] || iconos.gray;
-
-          if (!iconos[color]) {
-            console.warn(`Ícono no encontrado para color: ${color}`);
-          }
-
-          // Propiedades del marcador
+          const categoria = feature.properties?.categoria;
           const name = feature.properties?.name || "Sin nombre";
           const desc = feature.properties?.description || "Sin descripción";
           const fecha = feature.properties?.fecha || "Fecha desconocida";
           const foto = feature.properties?.foto || null;
 
-          // HTML del popup
+          // Asignar ícono según categoría
+          const icon = categoriaAIcono[categoria] || iconos.gray;
+
+          // Popup
           let popupContent = `
             <div style="max-width: 280px; font-family: Arial, sans-serif;">
-              <h3 style="margin: 0 0 8px 0; color: ${color};">${name}</h3>
+              <h3 style="margin: 0 0 8px 0; color: ${
+                categoria === 'Personas desaparecidas' ? 'crimson' :
+                categoria === 'Organismos de DDHH' ? 'green' :
+                categoria === 'Espacios de memoria' ? 'blue' :
+                categoria === 'Madres / CDD' ? 'gold' : '#666'
+              };">${name}</h3>
               <p style="margin: 0 0 8px 0;">${desc}</p>
-              <p style="margin: 0 0 8px 0;"><strong>Fecha:</strong> ${fecha}</p>
-          `;
+              <p style="margin: 0 0 8px 0;"><strong>Fecha:</strong> ${fecha}</p>`;
           if (foto) {
             popupContent += `<img src="${foto}" alt="Foto de ${name}" style="width:100%; height:auto; margin:8px 0; border-radius:6px;" />`;
           }
@@ -218,14 +183,14 @@
           // Crear y agregar marcador
           const marker = L.marker([lat, lng], { icon }).bindPopup(popupContent);
 
-          if (capas[category]) {
-            marker.addTo(capas[category]);
+          if (capas[categoria]) {
+            marker.addTo(capas[categoria]);
           } else {
             marker.addTo(map);
           }
         });
 
-        // Ajustar vista al área con datos
+        // Ajustar vista
         if (bounds.length > 0) {
           map.fitBounds(bounds, { padding: [50, 50] });
         }
@@ -239,7 +204,7 @@
       })
       .catch(error => {
         console.error('Error al cargar el GeoJSON:', error);
-        alert('No se pudo cargar el mapa de desaparecides. Intenta más tarde.');
+        alert('No se pudo cargar el mapa. Verifica que el archivo datos-mapa-geojson.geojson esté en la carpeta correcta.');
       });
   </script>
 </body>
